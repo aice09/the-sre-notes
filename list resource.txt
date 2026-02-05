@@ -1,0 +1,17 @@
+echo -e "HOST\tVCPUS_TOTAL\tVCPUS_USED\tVCPUS_USED_%\tRAM_TOTAL_MB\tRAM_USED_MB\tRAM_USED_%\tDISK_TOTAL_GB\tDISK_USED_GB\tDISK_USED_%"
+
+openstack hypervisor list -f value -c ID | while read id; do
+    host=$(openstack hypervisor show $id -f value -c hypervisor_hostname)
+    vcpus=$(openstack hypervisor show $id -f value -c vcpus)
+    vcpus_used=$(openstack hypervisor show $id -f value -c vcpus_used)
+    ram=$(openstack hypervisor show $id -f value -c memory_mb)
+    ram_used=$(openstack hypervisor show $id -f value -c memory_mb_used)
+    disk=$(openstack hypervisor show $id -f value -c local_gb)
+    disk_used=$(openstack hypervisor show $id -f value -c local_gb_used)
+
+    vcpu_pct=$((vcpus_used*100/vcpus))
+    ram_pct=$((ram_used*100/ram))
+    disk_pct=$((disk_used*100/disk))
+
+    echo -e "$host\t$vcpus\t$vcpus_used\t$vcpu_pct%\t$ram\t$ram_used\t$ram_pct%\t$disk\t$disk_used\t$disk_pct%"
+done | column -t
