@@ -1,17 +1,49 @@
-echo -e "HOST\tVCPUS_TOTAL\tVCPUS_USED\tVCPUS_USED_%\tRAM_TOTAL_MB\tRAM_USED_MB\tRAM_USED_%\tDISK_TOTAL_GB\tDISK_USED_GB\tDISK_USED_%"
+#!/bin/bash
 
-openstack hypervisor list -f value -c ID | while read id; do
-    host=$(openstack hypervisor show $id -f value -c hypervisor_hostname)
-    vcpus=$(openstack hypervisor show $id -f value -c vcpus)
-    vcpus_used=$(openstack hypervisor show $id -f value -c vcpus_used)
-    ram=$(openstack hypervisor show $id -f value -c memory_mb)
-    ram_used=$(openstack hypervisor show $id -f value -c memory_mb_used)
-    disk=$(openstack hypervisor show $id -f value -c local_gb)
-    disk_used=$(openstack hypervisor show $id -f value -c local_gb_used)
+echo "===== OpenStack Host Resource Report ====="
+echo
 
-    vcpu_pct=$((vcpus_used*100/vcpus))
-    ram_pct=$((ram_used*100/ram))
-    disk_pct=$((disk_used*100/disk))
+# Loop through all hypervisor hosts
+for host in $(openstack hypervisor list -f value -c "Hypervisor Hostname"); do
 
-    echo -e "$host\t$vcpus\t$vcpus_used\t$vcpu_pct%\t$ram\t$ram_used\t$ram_pct%\t$disk\t$disk_used\t$disk_pct%"
-done | column -t
+    # Get host totals and used
+    read vcpu vcpu_used mem mem_used disk disk_used <<< $(openstack hypervisor show $host -f value \
+        -c vcpus -c vcpus_used -c memory_mb -c memory_mb_used -c local_gb -c local_gb_used)
+
+    echo "Host: $host"
+    echo "Total VCPU: $vcpu, Used VCPU: $vcpu_used, Total Mem(MB): $mem, Used Mem(MB): $mem_used, Total Disk(GB): $disk, Used Disk(GB): $disk_used"
+    echo
+
+    # Declare associative arrays for project usage
+    declare -A proj_cpu proj_mem proj_disk
+
+    # List all VMs on this host with project info
+    openstack server list --all-projects --host $host -f value -c ID -c Name -c Project | while read vm_id vm_name project; do
+        # Get flavor of the VM
+        flavor=$(openstack server show $vm_id -f value -c flavor)
+        # Get flavor resources
+        read f_vcpu f_ram f_disk <<< $(openstack flavor show $flavor -f value -c vcpus -c ram -c disk)
+        # Sum resources per project
+        proj_cpu[$project]=$(( ${proj_cpu[$project]:-0} + f_vcpu ))
+        proj_mem[$project]=$(( ${proj_mem[$project]:-0} + f_ram ))
+        proj_disk[$project]=$(( ${proj_disk[$project]:-0} + f_disk ))
+
+        # Print VM info
+        printf "Project: %-10s VM: %-15s Flavor: %-10s CPU: %-2s RAM(MB): %-5s Disk(GB): %-3s\n" \
+        "$project" "$vm_name" "$flavor" "$f_vcpu" "$f_ram" "$f_disk"
+    done
+
+    # Print project total usage
+    echo
+    echo "Project Totals on $host:"
+    for p in "${!proj_cpu[@]}"; do
+        echo "  $p -> CPU: ${proj_cpu[$p]}, RAM: ${proj_mem[$p]} MB, Disk: ${proj_disk[$p]} GB"
+    done
+
+    echo
+    echo "-----------------------------------------------"
+    echo
+
+    unset proj_cpu proj_mem proj_disk
+
+done
