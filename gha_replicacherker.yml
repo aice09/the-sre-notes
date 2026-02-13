@@ -1,0 +1,65 @@
+name: Scan Buckets and Metadata
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scan-buckets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Scan Buckets in Each Region
+        id: scan_buckets
+        run: |
+          REGIONS=("n4" "n5" "n6" "n7" "n8" "n9")
+          BUCKET_NAME="bucket_name_here"
+          USERNAME="your_username_here"
+          PASSWORD="your_password_here"
+
+          # Initialize results array
+          echo "RESULTS=" >> $GITHUB_ENV
+
+          for REGION in "${REGIONS[@]}"; do
+            echo "Logging in to region: $REGION"
+            space login --region "$REGION" --username "$USERNAME" --password "$PASSWORD"
+
+            echo "Scanning region: $REGION"
+
+            # Check if bucket exists
+            if soaxe storage list buckets --region "$REGION" | grep -w "$BUCKET_NAME" >/dev/null 2>&1; then
+              EXISTS=true
+            else
+              EXISTS=false
+            fi
+
+            # Fetch metadata JSON
+            METADATA_URL="https://s3.${REGION}.srcloud.com/metadata/bucket/$BUCKET_NAME"
+            IS_REPLICA=$(curl -s $METADATA_URL | jq -r '.is_replica // "false"')
+
+            # Determine bucket type
+            if [ "$EXISTS" = true ] && [ "$IS_REPLICA" = "false" ]; then
+              TYPE="primary"
+            elif [ "$EXISTS" = true ] && [ "$IS_REPLICA" = "true" ]; then
+              TYPE="replica"
+            else
+              TYPE="none"
+            fi
+
+            echo "Region: $REGION, Exists: $EXISTS, is_replica: $IS_REPLICA, Type: $TYPE"
+
+            # Store results in GITHUB_ENV for later steps
+            RESULTS="${RESULTS}${REGION}:${TYPE};"
+          done
+
+          echo "RESULTS=$RESULTS" >> $GITHUB_ENV
+
+      - name: Output Bucket Types
+        run: |
+          echo "Bucket scan results:"
+          IFS=';' read -ra REGIONS_RESULT <<< "$RESULTS"
+          for r in "${REGIONS_RESULT[@]}"; do
+            echo "$r"
+          done
