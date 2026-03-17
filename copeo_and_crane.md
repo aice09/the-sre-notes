@@ -1012,3 +1012,213 @@ It will:
 * generate report
 
 Very useful for platform teams 👍
+
+
+Yes. The usual path is:
+
+1. create a certificate
+2. run the registry with TLS enabled
+3. make your Docker/containerd clients trust that certificate
+4. then use `https://...` instead of `http://...`
+
+The registry supports TLS through its config, and Docker treats a private registry as “secure” when it uses TLS and the CA certificate is trusted by the client. ([distribution.github.io][1])
+
+For your lab, the fastest good setup is a **self-signed CA + server cert** for `192.168.1.30` or, better, for a DNS name like `myregistry.local`. A DNS name is cleaner long-term because clients often expect certificates to match the registry hostname exactly. Docker’s docs also describe trusting the CA on clients by placing it in the registry certs directory. ([Docker Documentation][2])
+
+## Recommended approach
+
+Use a hostname such as `myregistry.local` mapped to `192.168.1.30`, then issue a cert for that name. After that, run the registry with TLS.
+
+### 1) Add a hostname on the machines that will use the registry
+
+On Linux or WSL clients:
+
+```bash
+echo "192.168.1.30 myregistry.local" | sudo tee -a /etc/hosts
+```
+
+On Windows, add the same mapping in the hosts file.
+
+Then use:
+
+```text
+https://myregistry.local:5000
+```
+
+### 2) Generate certs
+
+On the registry host, create a small OpenSSL config so the cert includes SANs:
+
+```bash
+mkdir -p ~/registry-certs
+cd ~/registry-certs
+
+cat > openssl.cnf <<'EOF'
+[ req ]
+default_bits       = 4096
+prompt             = no
+default_md         = sha256
+x509_extensions    = v3_ca
+distinguished_name = dn
+
+[ dn ]
+CN = My Local Registry CA
+
+[ v3_ca ]
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer
+basicConstraints = critical, CA:true
+keyUsage = critical, digitalSignature, cRLSign, keyCertSign
+EOF
+```
+
+Create a local CA:
+
+```bash
+openssl req -x509 -new -nodes -days 3650 \
+  -keyout ca.key -out ca.crt \
+  -config openssl.cnf
+```
+
+Now create the server cert config:
+
+```bash
+cat > server.cnf <<'EOF'
+[ req ]
+default_bits       = 4096
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+req_extensions     = req_ext
+
+[ dn ]
+CN = myregistry.local
+
+[ req_ext ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = myregistry.local
+IP.1  = 192.168.1.30
+EOF
+```
+
+Create key and CSR:
+
+```bash
+openssl req -new -nodes \
+  -keyout registry.key \
+  -out registry.csr \
+  -config server.cnf
+```
+
+Sign it with your CA:
+
+```bash
+openssl x509 -req -days 825 \
+  -in registry.csr \
+  -CA ca.crt -CAkey ca.key -CAcreateserial \
+  -out registry.crt \
+  -extensions req_ext -extfile server.cnf
+```
+
+That gives you:
+
+* `ca.crt`
+* `registry.crt`
+* `registry.key`
+
+### 3) Run the registry with TLS
+
+The CNCF Distribution registry supports TLS settings in its configuration and can also be run in Docker. ([distribution.github.io][1])
+
+Fastest container run:
+
+```bash
+docker rm -f temp-registry 2>/dev/null || true
+
+docker run -d \
+  --name temp-registry \
+  -p 5000:5000 \
+  -v "$PWD/registry.crt:/certs/registry.crt:ro" \
+  -v "$PWD/registry.key:/certs/registry.key:ro" \
+  -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
+  -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt \
+  -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
+  registry:2
+```
+
+Now test:
+
+```bash
+curl -v https://myregistry.local:5000/v2/ --cacert ca.crt
+```
+
+If it works, you should get a successful TLS connection and the `/v2/` response.
+
+### 4) Trust the CA on clients
+
+Docker documents that a secure private registry uses TLS and that the CA can be placed under `/etc/docker/certs.d/<registry>/ca.crt` on Linux; Docker Desktop also incorporates trusted host certificates. ([Docker Documentation][3])
+
+For Docker on Linux or WSL:
+
+```bash
+sudo mkdir -p /etc/docker/certs.d/myregistry.local:5000
+sudo cp ca.crt /etc/docker/certs.d/myregistry.local:5000/ca.crt
+sudo systemctl restart docker
+```
+
+For Docker Desktop on Windows, importing the CA into the Windows trusted root store is commonly enough because Docker Desktop builds its trust bundle from host-trusted CAs. ([Docker Documentation][4])
+
+### 5) Push or mirror using HTTPS
+
+Now your `skopeo` command becomes:
+
+```bash
+skopeo copy --all \
+  docker://registry.k8s.io/external-dns/external-dns:v0.15.0 \
+  docker://myregistry.local:5000/external-dns/external-dns:v0.15.0
+```
+
+No `--dest-tls-verify=false` needed once the CA is trusted.
+
+### 6) Update Helm values
+
+Then point your charts to:
+
+```yaml
+image:
+  registry: myregistry.local:5000
+  repository: external-dns/external-dns
+  tag: v0.15.0
+```
+
+and similarly for Emissary and MetalLB.
+
+## For Kubernetes nodes
+
+Your cluster nodes also need to trust the CA. If you use containerd, place the CA where containerd expects it or configure the registry host with the trusted cert. The exact file path depends on distro and containerd setup, but the key idea is the same: the node runtime must trust the registry certificate before pulls succeed. Docker’s secure-registry guidance is the same principle: TLS plus trusted CA. ([Docker Documentation][3])
+
+## If you want the simplest test first
+
+You can keep your current plain HTTP registry for quick testing, but the registry project explicitly notes that HTTP or self-signed setups require extra client configuration and come with trade-offs; they recommend using TLS from a known CA when possible. ([distribution.github.io][5])
+
+## Best practical advice for your setup
+
+For your homelab / local installer:
+
+* use `myregistry.local:5000` instead of raw IP
+* create your own CA once
+* issue a registry cert from that CA
+* trust `ca.crt` on WSL, Windows, and all Kubernetes nodes
+* then mirror images and update Helm values
+
+That gives you a much more production-like flow than `http://192.168.1.30:5000`. ([Docker Documentation][2])
+
+I can give you a ready-to-run `docker-compose.yml` plus OpenSSL script for `myregistry.local:5000` next.
+
+[1]: https://distribution.github.io/distribution/about/configuration/?utm_source=chatgpt.com "Configuring a registry | CNCF Distribution"
+[2]: https://docs.docker.com/engine/security/certificates/?utm_source=chatgpt.com "Verify repository client with certificates"
+[3]: https://docs.docker.com/reference/cli/dockerd/?utm_source=chatgpt.com "dockerd"
+[4]: https://docs.docker.com/desktop/troubleshoot-and-support/faqs/windowsfaqs/?utm_source=chatgpt.com "FAQs for Docker Desktop for Windows"
+[5]: https://distribution.github.io/distribution/about/insecure/?utm_source=chatgpt.com "Test an insecure registry | CNCF Distribution"
