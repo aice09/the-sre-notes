@@ -1222,3 +1222,401 @@ I can give you a ready-to-run `docker-compose.yml` plus OpenSSL script for `myre
 [3]: https://docs.docker.com/reference/cli/dockerd/?utm_source=chatgpt.com "dockerd"
 [4]: https://docs.docker.com/desktop/troubleshoot-and-support/faqs/windowsfaqs/?utm_source=chatgpt.com "FAQs for Docker Desktop for Windows"
 [5]: https://distribution.github.io/distribution/about/insecure/?utm_source=chatgpt.com "Test an insecure registry | CNCF Distribution"
+
+//////////////
+Yes — here’s a **practical Skopeo cheatsheet** for your exact job:
+
+**public registry → local HTTPS registry → verify → use in Helm/Kubernetes**
+
+Skopeo can inspect remote images without pulling, copy images between registries, sync repositories for air-gapped use, and work without a daemon/root for most operations. ([GitHub][1])
+
+---
+
+## Skopeo basics
+
+General format:
+
+```bash
+skopeo [global options] command [command options]
+```
+
+Common image transport you’ll use:
+
+```bash
+docker://REGISTRY/REPO:TAG
+```
+
+Skopeo’s main commands for your workflow are `inspect`, `copy`, `list-tags`, `login`, `delete`, and `sync`. ([GitHub][1])
+
+---
+
+## 1) Install
+
+Ubuntu / WSL:
+
+```bash
+sudo apt update
+sudo apt install -y skopeo jq
+skopeo --version
+```
+
+Ubuntu provides `skopeo` as a package, and the man page documents its CLI behavior. ([Ubuntu Manpages][2])
+
+---
+
+## 2) Inspect a public image
+
+Check image info without pulling:
+
+```bash
+skopeo inspect docker://registry.k8s.io/external-dns/external-dns:v0.15.0
+```
+
+Useful fields include digest, architecture, OS, layers, labels, and env metadata. `inspect` is specifically intended to show image properties without pulling. ([GitHub][1])
+
+Pretty output:
+
+```bash
+skopeo inspect docker://registry.k8s.io/external-dns/external-dns:v0.15.0 | jq
+```
+
+Digest only:
+
+```bash
+skopeo inspect docker://registry.k8s.io/external-dns/external-dns:v0.15.0 | jq -r .Digest
+```
+
+---
+
+## 3) List tags / versions
+
+Show available tags in a repo:
+
+```bash
+skopeo list-tags docker://registry.k8s.io/external-dns/external-dns
+```
+
+Pretty:
+
+```bash
+skopeo list-tags docker://registry.k8s.io/external-dns/external-dns | jq
+```
+
+This is the easiest way to discover versions before mirroring. `list-tags` is a documented subcommand in Skopeo’s CLI. ([Ubuntu Manpages][2])
+
+---
+
+## 4) Login to your private registry
+
+If your registry needs auth:
+
+```bash
+skopeo login myregistry.local:5000
+```
+
+Or:
+
+```bash
+skopeo login 192.168.1.30:5000
+```
+
+Skopeo supports passing credentials and certificates when required by the repository. ([GitHub][1])
+
+---
+
+## 5) Copy image: public → private registry
+
+### Basic copy
+
+```bash
+skopeo copy \
+  docker://registry.k8s.io/external-dns/external-dns:v0.15.0 \
+  docker://192.168.1.30:5000/external-dns:v0.15.0
+```
+
+### Copy all architectures / manifest list
+
+```bash
+skopeo copy --all \
+  docker://registry.k8s.io/external-dns/external-dns:v0.15.0 \
+  docker://192.168.1.30:5000/external-dns:v0.15.0
+```
+
+`copy` is the core Skopeo feature for registry-to-registry mirroring, and `--all` is important when you want the full multi-arch image set instead of just one platform. ([GitHub][1])
+
+### If your private registry cert is not trusted yet
+
+```bash
+skopeo copy --all \
+  --dest-tls-verify=false \
+  docker://registry.k8s.io/external-dns/external-dns:v0.15.0 \
+  docker://192.168.1.30:5000/external-dns:v0.15.0
+```
+
+### If source also has broken/untrusted TLS
+
+```bash
+skopeo copy --all \
+  --src-tls-verify=false \
+  --dest-tls-verify=false \
+  docker://SOURCE/REPO:TAG \
+  docker://DEST/REPO:TAG
+```
+
+---
+
+## 6) Inspect your private registry image after copy
+
+```bash
+skopeo inspect --tls-verify=false \
+  docker://192.168.1.30:5000/external-dns:v0.15.0
+```
+
+If your CA is already trusted:
+
+```bash
+skopeo inspect docker://192.168.1.30:5000/external-dns:v0.15.0
+```
+
+This is the best verification step after mirroring. ([GitHub][1])
+
+---
+
+## 7) Compare source and destination digest
+
+Source:
+
+```bash
+skopeo inspect docker://registry.k8s.io/external-dns/external-dns:v0.15.0 | jq -r .Digest
+```
+
+Destination:
+
+```bash
+skopeo inspect --tls-verify=false docker://192.168.1.30:5000/external-dns:v0.15.0 | jq -r .Digest
+```
+
+If the digests match, your mirror is correct. Skopeo inspect exposes the digest specifically for this sort of verification. ([Ubuntu Manpages][2])
+
+---
+
+## 8) Copy to simpler repo names
+
+For homelab/local installer work, I recommend flatter names.
+
+### ExternalDNS
+
+```bash
+skopeo copy --all \
+  --dest-tls-verify=false \
+  docker://registry.k8s.io/external-dns/external-dns:v0.15.0 \
+  docker://192.168.1.30:5000/external-dns:v0.15.0
+```
+
+### MetalLB
+
+```bash
+skopeo copy --all \
+  --dest-tls-verify=false \
+  docker://quay.io/metallb/controller:v0.15.2 \
+  docker://192.168.1.30:5000/metallb-controller:v0.15.2
+
+skopeo copy --all \
+  --dest-tls-verify=false \
+  docker://quay.io/metallb/speaker:v0.15.2 \
+  docker://192.168.1.30:5000/metallb-speaker:v0.15.2
+```
+
+### Emissary
+
+```bash
+skopeo copy --all \
+  --dest-tls-verify=false \
+  docker://docker.io/emissaryingress/emissary:3.10.2 \
+  docker://192.168.1.30:5000/emissary:v3.10.2
+```
+
+---
+
+## 9) Delete an image tag from your private registry
+
+```bash
+skopeo delete --tls-verify=false \
+  docker://192.168.1.30:5000/external-dns:v0.15.0
+```
+
+`delete` is one of the documented image-repository operations in Skopeo. ([GitHub][1])
+
+---
+
+## 10) Sync many images for air-gapped use
+
+Skopeo supports `sync` specifically for syncing an external repository into an internal registry for air-gapped deployments. ([GitHub][1])
+
+Example idea:
+
+```bash
+skopeo sync --all \
+  --src docker \
+  --dest docker \
+  docker.io/library/alpine \
+  192.168.1.30:5000/mirror
+```
+
+That said, for your current Helm-image job, `copy` is usually easier and more predictable than `sync`.
+
+---
+
+## 11) Most useful flags
+
+```bash
+--all
+```
+
+Copy all images in a manifest list / multi-arch image.
+
+```bash
+--src-tls-verify=false
+```
+
+Skip TLS verification for source registry.
+
+```bash
+--dest-tls-verify=false
+```
+
+Skip TLS verification for destination registry.
+
+```bash
+--src-creds user:pass
+```
+
+Credentials for source registry.
+
+```bash
+--dest-creds user:pass
+```
+
+Credentials for destination registry.
+
+```bash
+--format oci
+```
+
+Convert output manifest format when applicable.
+
+These options are part of Skopeo’s documented copy behavior and shared command structure. ([Ubuntu Manpages][2])
+
+---
+
+## 12) Your exact workflow cheatsheet
+
+### Find tag
+
+```bash
+skopeo list-tags docker://registry.k8s.io/external-dns/external-dns | jq
+```
+
+### Inspect source
+
+```bash
+skopeo inspect docker://registry.k8s.io/external-dns/external-dns:v0.15.0 | jq
+```
+
+### Copy to local registry
+
+```bash
+skopeo copy --all \
+  --dest-tls-verify=false \
+  docker://registry.k8s.io/external-dns/external-dns:v0.15.0 \
+  docker://192.168.1.30:5000/external-dns:v0.15.0
+```
+
+### Verify copied image
+
+```bash
+skopeo inspect --tls-verify=false \
+  docker://192.168.1.30:5000/external-dns:v0.15.0 | jq
+```
+
+### Compare digest
+
+```bash
+skopeo inspect docker://registry.k8s.io/external-dns/external-dns:v0.15.0 | jq -r .Digest
+skopeo inspect --tls-verify=false docker://192.168.1.30:5000/external-dns:v0.15.0 | jq -r .Digest
+```
+
+---
+
+## 13) Helm mapping examples
+
+### ExternalDNS
+
+```yaml
+image:
+  registry: 192.168.1.30:5000
+  repository: external-dns
+  tag: v0.15.0
+```
+
+### MetalLB
+
+```yaml
+controller:
+  image:
+    repository: 192.168.1.30:5000/metallb-controller
+    tag: v0.15.2
+
+speaker:
+  image:
+    repository: 192.168.1.30:5000/metallb-speaker
+    tag: v0.15.2
+```
+
+### Emissary
+
+```yaml
+image:
+  repository: 192.168.1.30:5000/emissary
+  tag: v3.10.2
+```
+
+---
+
+## 14) Common errors and meaning
+
+### `NAME_UNKNOWN`
+
+Wrong repo path, or repo does not exist in registry.
+
+### `manifest unknown`
+
+Repo exists, but that exact tag/digest does not exist.
+
+### `x509: certificate signed by unknown authority`
+
+Your client/node does not trust the registry CA.
+
+### `certificate is valid for X, not Y`
+
+Hostname/IP does not match cert SAN.
+
+These behaviors follow standard registry API naming/tag resolution and TLS trust expectations for private registries. ([GitHub][1])
+
+---
+
+## 15) My recommendation for your setup
+
+For your lab/local installer:
+
+* use **flat image names**
+* use `skopeo copy --all`
+* verify with `skopeo inspect`
+* compare digests
+* only use `--dest-tls-verify=false` temporarily
+* once stable, install your CA on Docker/containerd nodes
+
+I can turn this into a **copy-paste shell script cheatsheet** for ExternalDNS, MetalLB, and Emissary specifically.
+
+[1]: https://github.com/containers/skopeo?utm_source=chatgpt.com "containers/skopeo: Work with remote images registries"
+[2]: https://manpages.ubuntu.com/manpages/noble/man1/skopeo.1.html?utm_source=chatgpt.com "skopeo -- Command line utility used to interact with local ..."
