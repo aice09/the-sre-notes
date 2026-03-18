@@ -2,10 +2,11 @@
 
 set -u
 
-SILENT=0
-DETACHED=0
 BUCKET=""
 TICKET=""
+SILENT=0
+DETACHED=0
+RUN_ID=""
 
 usage() {
     cat <<EOF
@@ -13,27 +14,28 @@ Usage:
   $0 [--bucket BUCKET_NAME] [--ticket TICKET_NUMBER] [--silent]
 
 Options:
-  --bucket   Bucket name to delete
-  --ticket   Ticket number for log filename
-  --silent   Run the whole job in background, logs still go to delete-<ticket>.log
+  --bucket   Bucket name
+  --ticket   Ticket number
+  --silent   Run the script in background
   -h, --help Show this help
 
 Examples:
   $0
   $0 --bucket mybucket --ticket ONEDI-12345
   $0 --bucket mybucket --ticket ONEDI-12345 --silent
+  $0 --silent
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --bucket)
-            [[ $# -lt 2 ]] && { echo "ERROR: --bucket requires a value"; exit 1; }
+            [[ $# -lt 2 ]] && { echo "ERROR: --bucket requires a value."; exit 1; }
             BUCKET="$2"
             shift 2
             ;;
         --ticket)
-            [[ $# -lt 2 ]] && { echo "ERROR: --ticket requires a value"; exit 1; }
+            [[ $# -lt 2 ]] && { echo "ERROR: --ticket requires a value."; exit 1; }
             TICKET="$2"
             shift 2
             ;;
@@ -72,10 +74,24 @@ fi
 
 LOGFILE="delete-${TICKET}.log"
 
-touch "${LOGFILE}" || {
+# If --silent is requested, detach BEFORE any logging.
+# Only the detached child should write the operational log.
+if [[ "${SILENT}" -eq 1 && "${DETACHED}" -eq 0 ]]; then
+    nohup "$0" --bucket "${BUCKET}" --ticket "${TICKET}" --detached >/dev/null 2>&1 &
+    BG_PID=$!
+    echo "Job started in background."
+    echo "PID: ${BG_PID}"
+    echo "Log file: ${LOGFILE}"
+    exit 0
+fi
+
+# Fresh log file for each run
+: > "${LOGFILE}" || {
     echo "ERROR: Cannot create log file ${LOGFILE}"
     exit 1
 }
+
+RUN_ID=$(date +"%Y%m%d-%H%M%S")
 
 log() {
     if [[ "${DETACHED}" -eq 1 ]]; then
@@ -85,43 +101,14 @@ log() {
     fi
 }
 
-# If --silent is used, re-run the script in the background after inputs are known.
-if [[ "${SILENT}" -eq 1 && "${DETACHED}" -eq 0 ]]; then
-    nohup "$0" --bucket "${BUCKET}" --ticket "${TICKET}" --detached >/dev/null 2>&1 &
-    BG_PID=$!
-
-    echo "Job started in background."
-    echo "PID: ${BG_PID}"
-    echo "Log file: ${LOGFILE}"
-
-    {
-        echo "========================================"
-        echo "INPUT SUMMARY"
-        echo "========================================"
-        echo "Date: $(date)"
-        echo "Bucket: ${BUCKET}"
-        echo "Ticket: ${TICKET}"
-        echo "Log File: ${LOGFILE}"
-        echo "Silent Mode: YES"
-        echo "Background PID: ${BG_PID}"
-        echo ""
-    } >> "${LOGFILE}"
-
-    exit 0
-fi
-
 log "========================================"
 log "INPUT SUMMARY"
 log "========================================"
+log "Run ID: ${RUN_ID}"
 log "Date: $(date)"
 log "Bucket: ${BUCKET}"
 log "Ticket: ${TICKET}"
 log "Log File: ${LOGFILE}"
-if [[ "${SILENT}" -eq 1 || "${DETACHED}" -eq 1 ]]; then
-    log "Silent Mode: YES"
-else
-    log "Silent Mode: NO"
-fi
 log ""
 
 log "========================================"
