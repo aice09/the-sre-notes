@@ -20,27 +20,6 @@ Basically…
 
 > Everything you wish someone documented before your first on-call shift 😄
 
-## 🎯 Why This Repo Exists
-
-Because infra knowledge is usually:
-
-* buried in Slack threads
-* stuck in private wikis
-* lost after incidents
-* or only known by “that one senior engineer”
-
-## 🧩 Who This Is For
-
-If you are:
-
-* SRE
-* DevOps
-* Platform Engineer
-* Homelab builder
-* Cloud learner
-
-You will probably enjoy this repo 🙂
-
 ## ☕ Remember
 
 > Production doesn’t care about theory.
