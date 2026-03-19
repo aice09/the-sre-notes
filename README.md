@@ -1,4 +1,4 @@
-# 🚀 The SRE Notes
+# :speak_no_evil:  The SRE Notes
 
 > Real-world notes, scripts, and battle scars from running infrastructure in production.
 
@@ -20,7 +20,7 @@ Basically…
 
 > Everything you wish someone documented before your first on-call shift 😄
 
-## ☕ Remember
+## :coffee: Remember
 
 > Production doesn’t care about theory.
 > Only working solutions.
