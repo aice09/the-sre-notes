@@ -9,12 +9,12 @@ This is what actually works when production is burning. 🔥
 
 ## What’s Inside
 
-☁️ Kubernetes troubleshooting & upgrades
-💾 Ceph storage operations & scripts
-📊 Monitoring & alerting patterns
-🔐 Security & access hardening tips
-🤖 Automation & DevOps snippets
-🌐 Networking & architecture ideas
+- Kubernetes troubleshooting & upgrades
+- Ceph storage operations & scripts
+- Monitoring & alerting patterns
+- Security & access hardening tips
+- Automation & DevOps snippets
+- Networking & architecture ideas
 
 Basically…
 
