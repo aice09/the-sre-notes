@@ -19,7 +19,7 @@ GATEWAY="10.20.20.1"
 
 # Hosts file entries
 HOSTS_BLOCK=$(cat <<EOF
-10.20.20.10 "k8s-tunnel-v1"
+10.20.20.10 k8s-tunnel-v1
 10.20.20.11 k8s-node-v1
 10.20.20.12 k8s-node-v2
 10.20.20.13 k8s-node-v3
