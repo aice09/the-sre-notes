@@ -3,33 +3,29 @@ set -euo pipefail
 
 # Host to IP mapping
 declare -A HOST_MAP=(
-  ["tunnel-vm"]="192.168.1.101/24"
-  ["k8s-node-1"]="192.168.1.111/24"
-  ["k8s-node-2"]="192.168.1.112/24"
-  ["k8s-node-3"]="192.168.1.113/24"
-  ["k8s-node-4"]="192.168.1.114/24"
-  ["k8s-node-5"]="192.168.1.115/24"
-  ["k8s-node-6"]="192.168.1.116/24"
-  ["ceph-node-1"]="192.168.1.131/24"
-  ["ceph-node-2"]="192.168.1.132/24"
-  ["ceph-node-3"]="192.168.1.133/24"
+  ["k8s-tunnel-v1"]="10.10.10.10/24"
+  ["k8s-node-v1"]="10.10.10.11/24"
+  ["k8s-node-v2"]="10.10.10.12/24"
+  ["k8s-node-v3"]="10.10.10.13/24"
+  ["k8s-node-p1"]="10.10.10.14/24"
+  ["k8s-node-p2"]="10.10.10.15/24"
+  ["k8s-node-p3"]="10.10.10.14/24"
+  ["k8s-node-p4"]="10.10.10.15/24"
 )
 
 # Gateway
-GATEWAY="192.168.1.1"
+GATEWAY="10.10.10.1"
 
 # Hosts file entries
 HOSTS_BLOCK=$(cat <<EOF
-192.168.1.110 tunnel-vm
-192.168.1.111 k8s-node-1
-192.168.1.112 k8s-node-2
-192.168.1.113 k8s-node-3
-192.168.1.114 k8s-node-4
-192.168.1.115 k8s-node-5
-192.168.1.116 k8s-node-6
-192.168.1.131 ceph-node-1
-192.168.1.132 ceph-node-2
-192.168.1.133 ceph-node-3
+10.10.10.10 "k8s-tunnel-v1
+10.10.10.11 k8s-node-v1
+10.10.10.12 k8s-node-v2
+10.10.10.13 k8s-node-v3
+10.10.10.14 k8s-node-p1
+10.10.10.15 k8s-node-p2
+10.10.10.14 k8s-node-p3
+10.10.10.15 k8s-node-p4
 EOF
 )
 
@@ -40,7 +36,7 @@ echo "Detected hostname: $HOSTNAME_CURRENT"
 # Step 1: Update /etc/hosts
 echo "Updating /etc/hosts..."
 cp /etc/hosts /etc/hosts.bak.$(date +%F-%T)
-sed -i '/tunnel-vm/d;/k8s-node-1/d;/k8s-node-2/d;/k8s-node-3/d;/k8s-node-4/d;/k8s-node-5/d;/k8s-node-6/d;/ceph-node-1/d;/ceph-node-2/d;/ceph-node-3/d' /etc/hosts
+sed -i '/k8s-tunnel-v1/d;/k8s-node-v1/d;/k8s-node-v2/d;/k8s-node-v3/d;/k8s-node-v4/d;/k8s-node-v5/d;/k8s-node-v6/d;/k8s-node-p1/d;/k8s-node-p2/d;/k8s-node-p3/d;/k8s-node-p4/d' /etc/hosts
 echo "$HOSTS_BLOCK" >> /etc/hosts
 
 # Step 2: Update hostname + static IP if in map
@@ -59,7 +55,7 @@ if [[ -v HOST_MAP[$HOSTNAME_CURRENT] ]]; then
     # Configure static IP via nmcli
     nmcli con mod "$IFACE" ipv4.addresses "$NEW_IP"
     nmcli con mod "$IFACE" ipv4.gateway "$GATEWAY"
-    nmcli con mod "$IFACE" ipv4.dns "192.168.1.1 1.1.1.1"
+    nmcli con mod "$IFACE" ipv4.dns "10.10.10.1 1.1.1.1"
     nmcli con mod "$IFACE" ipv4.method manual
     nmcli con up "$IFACE"
 
