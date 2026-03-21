@@ -7,10 +7,11 @@ declare -A HOST_MAP=(
   ["k8s-node-v1"]="10.10.10.11/24"
   ["k8s-node-v2"]="10.10.10.12/24"
   ["k8s-node-v3"]="10.10.10.13/24"
-  ["k8s-node-p1"]="10.10.10.14/24"
-  ["k8s-node-p2"]="10.10.10.15/24"
-  ["k8s-node-p3"]="10.10.10.14/24"
-  ["k8s-node-p4"]="10.10.10.15/24"
+  ["k8s-node-v4"]="10.10.10.14/24"
+  ["k8s-node-p1"]="10.10.10.15/24"
+  ["k8s-node-p2"]="10.10.10.16/24"
+  ["k8s-node-p3"]="10.10.10.17/24"
+  ["k8s-node-p4"]="10.10.10.18/24"
 )
 
 # Gateway
@@ -22,10 +23,11 @@ HOSTS_BLOCK=$(cat <<EOF
 10.10.10.11 k8s-node-v1
 10.10.10.12 k8s-node-v2
 10.10.10.13 k8s-node-v3
-10.10.10.14 k8s-node-p1
-10.10.10.15 k8s-node-p2
-10.10.10.14 k8s-node-p3
-10.10.10.15 k8s-node-p4
+10.10.10.14 k8s-node-v4
+10.10.10.15 k8s-node-p1
+10.10.10.16 k8s-node-p2
+10.10.10.17 k8s-node-p3
+10.10.10.18 k8s-node-p4
 EOF
 )
 
@@ -36,7 +38,7 @@ echo "Detected hostname: $HOSTNAME_CURRENT"
 # Step 1: Update /etc/hosts
 echo "Updating /etc/hosts..."
 cp /etc/hosts /etc/hosts.bak.$(date +%F-%T)
-sed -i '/k8s-tunnel-v1/d;/k8s-node-v1/d;/k8s-node-v2/d;/k8s-node-v3/d;/k8s-node-v4/d;/k8s-node-v5/d;/k8s-node-v6/d;/k8s-node-p1/d;/k8s-node-p2/d;/k8s-node-p3/d;/k8s-node-p4/d' /etc/hosts
+sed -i '/k8s-tunnel-v1/d;/k8s-node-v1/d;/k8s-node-v2/d;/k8s-node-v3/d;/k8s-node-v4/d;/k8s-node-p1/d;/k8s-node-p2/d;/k8s-node-p3/d;/k8s-node-p4/d' /etc/hosts
 echo "$HOSTS_BLOCK" >> /etc/hosts
 
 # Step 2: Update hostname + static IP if in map
