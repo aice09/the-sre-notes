@@ -3,31 +3,31 @@ set -euo pipefail
 
 # Host to IP mapping
 declare -A HOST_MAP=(
-  ["k8s-tunnel-v1"]="10.10.10.10/24"
-  ["k8s-node-v1"]="10.10.10.11/24"
-  ["k8s-node-v2"]="10.10.10.12/24"
-  ["k8s-node-v3"]="10.10.10.13/24"
-  ["k8s-node-v4"]="10.10.10.14/24"
-  ["k8s-node-p1"]="10.10.10.15/24"
-  ["k8s-node-p2"]="10.10.10.16/24"
-  ["k8s-node-p3"]="10.10.10.17/24"
-  ["k8s-node-p4"]="10.10.10.18/24"
+  ["k8s-tunnel-v1"]="10.20.20.10/24"
+  ["k8s-node-v1"]="10.20.20.11/24"
+  ["k8s-node-v2"]="10.20.20.12/24"
+  ["k8s-node-v3"]="10.20.20.13/24"
+  ["k8s-node-v4"]="10.20.20.14/24"
+  ["k8s-node-p1"]="10.20.20.15/24"
+  ["k8s-node-p2"]="10.20.20.16/24"
+  ["k8s-node-p3"]="10.20.20.17/24"
+  ["k8s-node-p4"]="10.20.20.18/24"
 )
 
 # Gateway
-GATEWAY="10.10.10.1"
+GATEWAY="10.20.20.1"
 
 # Hosts file entries
 HOSTS_BLOCK=$(cat <<EOF
-10.10.10.10 "k8s-tunnel-v1
-10.10.10.11 k8s-node-v1
-10.10.10.12 k8s-node-v2
-10.10.10.13 k8s-node-v3
-10.10.10.14 k8s-node-v4
-10.10.10.15 k8s-node-p1
-10.10.10.16 k8s-node-p2
-10.10.10.17 k8s-node-p3
-10.10.10.18 k8s-node-p4
+10.20.20.10 "k8s-tunnel-v1"
+10.20.20.11 k8s-node-v1
+10.20.20.12 k8s-node-v2
+10.20.20.13 k8s-node-v3
+10.20.20.14 k8s-node-v4
+10.20.20.15 k8s-node-p1
+10.20.20.16 k8s-node-p2
+10.20.20.17 k8s-node-p3
+10.20.20.18 k8s-node-p4
 EOF
 )
 
@@ -57,7 +57,7 @@ if [[ -v HOST_MAP[$HOSTNAME_CURRENT] ]]; then
     # Configure static IP via nmcli
     nmcli con mod "$IFACE" ipv4.addresses "$NEW_IP"
     nmcli con mod "$IFACE" ipv4.gateway "$GATEWAY"
-    nmcli con mod "$IFACE" ipv4.dns "10.10.10.1 1.1.1.1"
+    nmcli con mod "$IFACE" ipv4.dns "10.20.20.1 1.1.1.1"
     nmcli con mod "$IFACE" ipv4.method manual
     nmcli con up "$IFACE"
 
