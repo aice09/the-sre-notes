@@ -1,39 +1,106 @@
 ---
-- name: Check RAID CLI tools
+- name: Check RAID CLI and basic RAID health
   hosts: raid_servers
   gather_facts: yes
   become: yes
 
+  vars:
+    raid_tool: "none"
+    raid_status_cmd: ""
+
   tasks:
-
-    - name: Show basic info
+    - name: Show basic host info
       debug:
-        msg: "Host={{ inventory_hostname }} OS={{ ansible_distribution }} {{ ansible_distribution_version }}"
+        msg: "Host={{ inventory_hostname }} Vendor={{ ansible_system_vendor | default('unknown') }} Model={{ ansible_product_name | default('unknown') }}"
 
-    - name: Check ssacli (HPE)
+    - name: Check ssacli
       shell: which ssacli
       register: ssacli_check
       ignore_errors: yes
+      changed_when: false
 
-    - name: Check storcli (LSI / Supermicro / Dell)
+    - name: Check hpssacli
+      shell: which hpssacli
+      register: hpssacli_check
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Check storcli
       shell: which storcli
       register: storcli_check
       ignore_errors: yes
+      changed_when: false
 
-    - name: Check perccli (Dell)
+    - name: Check perccli
       shell: which perccli
       register: perccli_check
       ignore_errors: yes
+      changed_when: false
 
-    - name: Check megacli (old LSI)
+    - name: Check MegaCli
       shell: which MegaCli
       register: megacli_check
       ignore_errors: yes
+      changed_when: false
 
-    - name: Show RAID CLI Summary
+    - name: Select ssacli
+      set_fact:
+        raid_tool: "ssacli"
+        raid_status_cmd: "ssacli ctrl all show"
+      when: ssacli_check.rc == 0
+
+    - name: Select hpssacli
+      set_fact:
+        raid_tool: "hpssacli"
+        raid_status_cmd: "hpssacli ctrl all show"
+      when:
+        - raid_tool == "none"
+        - hpssacli_check.rc == 0
+
+    - name: Select perccli
+      set_fact:
+        raid_tool: "perccli"
+        raid_status_cmd: "perccli show"
+      when:
+        - raid_tool == "none"
+        - perccli_check.rc == 0
+
+    - name: Select storcli
+      set_fact:
+        raid_tool: "storcli"
+        raid_status_cmd: "storcli show"
+      when:
+        - raid_tool == "none"
+        - storcli_check.rc == 0
+
+    - name: Select MegaCli
+      set_fact:
+        raid_tool: "MegaCli"
+        raid_status_cmd: "MegaCli -AdpAllInfo -aAll"
+      when:
+        - raid_tool == "none"
+        - megacli_check.rc == 0
+
+    - name: Show selected RAID tool
       debug:
-        msg: |
-          ssacli={{ ssacli_check.stdout | default('not found') }}
-          storcli={{ storcli_check.stdout | default('not found') }}
-          perccli={{ perccli_check.stdout | default('not found') }}
-          megacli={{ megacli_check.stdout | default('not found') }}
+        msg: "Tool={{ raid_tool }} Command={{ raid_status_cmd }}"
+      when: raid_tool != "none"
+
+    - name: Run RAID command with longer timeout
+      shell: "{{ raid_status_cmd }}"
+      register: raid_status
+      ignore_errors: yes
+      changed_when: false
+      async: 120
+      poll: 10
+      when: raid_tool != "none"
+
+    - name: Show RAID output
+      debug:
+        var: raid_status.stdout_lines
+      when: raid_tool != "none"
+
+    - name: No RAID CLI found
+      debug:
+        msg: "No supported RAID CLI found"
+      when: raid_tool == "none"
