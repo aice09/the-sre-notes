@@ -217,3 +217,163 @@ If you want next, I can give you:
 ⭐ Preventive checklist — how to avoid ghost MPU buckets in Mimic
 ⭐ Quick command cheat sheet (1 page)
 ⭐ Upgrade risk notes Mimic → Nautilus for RGW
+
+
+
+reason
+✅ Good — that is an important root cause detail.
+Let’s fix the summary and make it technically accurate.
+
+You are saying:
+
+The multipart upload key (object / upload reference) does not exist anymore.
+
+This is VERY important because this explains why all normal deletion methods failed.
+
+Let’s rewrite the corrected final explanation you can use.
+
+⸻
+
+✅ Correct Root Cause Addition
+
+⭐ Real Root Cause
+
+The bucket deletion failed because incomplete multipart upload entries still existed in the bucket index, but the actual multipart upload objects / keys no longer existed in the data pool.
+
+Meaning:
+	•	RGW index still referenced multipart uploads
+	•	But the underlying objects were already missing / deleted / corrupted
+
+This caused:
+
+cannot delete bucket
+40 incomplete multipart uploads
+
+Because RGW logic requires:
+
+Bucket must have ZERO objects AND ZERO multipart uploads before deletion.
+
+Since the MPU metadata still existed, RGW refused deletion even though the actual MPU data objects were gone.
+
+⸻
+
+⭐ Why Multipart Abort Did Not Work
+
+Abort multipart requires:
+	•	valid upload ID
+	•	valid object key
+	•	valid MPU metadata + data
+
+But in this case:
+
+👉 the key / MPU parts did not exist anymore
+
+So:
+	•	abort operation failed
+	•	cleanup via S3 API impossible
+
+This indicates stale or corrupted bucket index state.
+
+⸻
+
+⭐ Why bucket check --fix Did Not Fix It
+
+Because:
+	•	bucket check --fix repairs object index inconsistencies
+	•	but may not fully remove ghost MPU entries in Mimic
+	•	especially when bucket instance or index shard already corrupted
+
+⸻
+
+⭐ Why bypass-gc Did Not Fix It
+
+Because:
+	•	GC queue is for deleting real objects
+	•	here the real objects were already gone
+	•	only index references remained
+
+So GC had nothing to process.
+
+⸻
+
+⭐ Why We Identified Stale Instance
+
+Running stale-instance detection showed:
+
+elderly-share bucket instance was stale.
+
+This confirmed:
+	•	bucket reshard / instance corruption scenario
+	•	index references may point to non-existent data
+
+⸻
+
+⭐ Why We Used bi purge
+
+bi purge was used to remove:
+	•	broken bucket index entries
+	•	stale MPU references
+	•	invalid listing state
+
+However:
+
+It does NOT delete:
+	•	raw data objects
+	•	bucket metadata record
+
+So after purge:
+	•	bucket index effectively gone
+	•	stats started returning ret=-2
+	•	metadata still existed
+
+⸻
+
+⭐ Final Step — Metadata Removal
+
+Since:
+	•	index gone
+	•	stats failing
+	•	bucket metadata still registered
+
+We removed metadata:
+
+radosgw-admin metadata rm bucket:elderly-share
+
+This finally removed the bucket.
+
+⸻
+
+⭐ Why Orphan Objects Exist Now
+
+Because:
+	•	bucket index removed
+	•	metadata removed
+	•	but some raw objects may still exist in data pool
+
+These objects are now:
+
+orphan objects
+
+They are:
+	•	not referenced
+	•	invisible to RGW
+	•	consuming storage space
+
+⸻
+
+⭐ Final Technical Lesson
+
+This incident was caused by:
+
+Stale multipart upload references pointing to non-existent keys / objects,
+combined with a stale bucket instance and broken bucket index.
+
+This required:
+	•	stale instance cleanup
+	•	bucket index purge
+	•	metadata removal
+
+⸻
+
+If you want, I can now produce a VERY clean final RCA document (professional style) like what you would submit in enterprise storage incident review 👍
+
