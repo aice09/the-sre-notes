@@ -1,0 +1,39 @@
+---
+- name: Infra Connectivity Test
+  hosts: check_hosts
+  gather_facts: false
+
+  vars:
+    ssh_port: 22
+
+  tasks:
+
+    - name: ICMP ping test (from control node)
+      delegate_to: localhost
+      command: "ping -c 2 -W 2 {{ ansible_host }}"
+      register: icmp_test
+      ignore_errors: true
+
+    - name: SSH port test (from control node)
+      delegate_to: localhost
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ ssh_port }}"
+        timeout: 3
+        state: started
+      register: ssh_port_test
+      ignore_errors: true
+
+    - name: Ansible SSH login test
+      ansible.builtin.ping:
+      register: ansible_ping_test
+      ignore_unreachable: true
+      ignore_errors: true
+
+    - name: Show result summary
+      debug:
+        msg: |
+          ===== {{ inventory_hostname }} =====
+          ICMP Reachable : {{ 'YES' if icmp_test.rc == 0 else 'NO' }}
+          SSH Port Open  : {{ 'YES' if ssh_port_test.failed is not defined else 'NO' }}
+          SSH Login OK   : {{ 'YES' if (ansible_ping_test.ping is defined and ansible_ping_test.ping == 'pong') else 'NO' }}
