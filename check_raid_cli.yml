@@ -1,0 +1,61 @@
+---
+- name: Check RAID CLI tools on servers
+  hosts: all
+  gather_facts: true
+  become: true
+
+  vars:
+    raid_tools:
+      - { name: "ssacli",   cmd: "ssacli version" }
+      - { name: "hpssacli", cmd: "hpssacli version" }
+      - { name: "storcli",  cmd: "storcli show" }
+      - { name: "perccli",  cmd: "perccli show" }
+      - { name: "megacli",  cmd: "megacli -v" }
+      - { name: "arcconf",  cmd: "arcconf GETVERSION 1" }
+      - { name: "smartctl", cmd: "smartctl --version" }
+
+  tasks:
+    - name: Show basic system info
+      ansible.builtin.debug:
+        msg:
+          - "Host   : {{ inventory_hostname }}"
+          - "Vendor : {{ ansible_system_vendor | default('unknown') }}"
+          - "Model  : {{ ansible_product_name | default('unknown') }}"
+
+    - name: Check if RAID CLI binaries exist
+      ansible.builtin.shell: "command -v {{ item.name }}"
+      loop: "{{ raid_tools }}"
+      register: raid_cli_check
+      changed_when: false
+      failed_when: false
+
+    - name: Run version/info command if tool exists
+      ansible.builtin.shell: "{{ item.item.cmd }}"
+      loop: "{{ raid_cli_check.results }}"
+      when: item.rc == 0
+      register: raid_cli_versions
+      changed_when: false
+      failed_when: false
+
+    - name: Build RAID CLI summary
+      ansible.builtin.set_fact:
+        raid_cli_summary: "{{ raid_cli_summary | default([]) + [ {
+          'tool': item.item.name,
+          'installed': (item.rc == 0),
+          'path': (item.stdout if item.rc == 0 else 'not found')
+        } ] }}"
+      loop: "{{ raid_cli_check.results }}"
+
+    - name: Show RAID CLI presence summary
+      ansible.builtin.debug:
+        var: raid_cli_summary
+
+    - name: Show RAID CLI version/info output
+      ansible.builtin.debug:
+        msg: |
+          Tool: {{ item.item.item.name }}
+          Command: {{ item.item.item.cmd }}
+          Output:
+          {{ item.stdout | default('no output') }}
+      loop: "{{ raid_cli_versions.results | default([]) }}"
+      when: item.rc == 0
