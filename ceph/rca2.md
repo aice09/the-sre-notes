@@ -132,4 +132,213 @@ This means orphan cleanup requires:
 
 ⸻
 
+✅ Perfect — I understand 👍
+You want a clean factual summary (incident / runbook style) based on the REAL steps you did.
+
+I’ll rewrite it properly so you can paste in:
+	•	ticket
+	•	RCA
+	•	runbook
+	•	ops notes
+	•	knowledge base
+
+⸻
+
+🧠 Incident Summary — RGW Bucket Cannot Be Deleted (Ceph Mimic 13.2.6)
+
+🎯 Initial Problem
+
+While performing cleanup using:
+
+radosgw-admin bucket rm --purge-objects
+
+Bucket elderly-share could not be deleted.
+
+Error observed:
+
+cannot delete bucket directory
+warning: 40 incomplete multipart uploads
+
+
+⸻
+
+🔎 Troubleshooting Steps Performed
+
+1️⃣ Attempted Multipart Upload Abort (S3 API)
+
+Tried to list and abort incomplete multipart uploads.
+
+Result:
+	•	Multipart uploads could not be aborted
+	•	Upload IDs possibly stale / ghost metadata
+
+⸻
+
+2️⃣ Attempted Bucket Repair
+
+radosgw-admin bucket check --bucket elderly-share --fix --check-objects
+
+Result:
+	•	No improvement
+	•	Bucket deletion still failed
+
+⸻
+
+3️⃣ Attempted Forced Bucket Deletion (Bypass GC)
+
+radosgw-admin bucket rm \
+  --bucket elderly-share \
+  --purge-objects \
+  --bypass-gc
+
+Result:
+	•	Still failed due to incomplete multipart uploads
+
+⸻
+
+4️⃣ Investigated Bucket Index
+
+Tried to inspect bucket index:
+
+radosgw-admin bi list --bucket elderly-share
+
+Then attempted index purge:
+
+radosgw-admin bi purge \
+  --bucket elderly-share \
+  --yes-i-really-mean-it
+
+Result:
+	•	Bucket still could not be deleted
+	•	GC processing also failed
+
+⸻
+
+5️⃣ Bucket Stats Failure Observed
+
+radosgw-admin bucket stats --bucket elderly-share
+
+Returned:
+
+error getting bucket ret=-2
+No such file or directory
+
+This indicated:
+
+Bucket metadata entry existed but bucket instance/index was already broken or missing.
+
+⸻
+
+6️⃣ Verified Bucket Metadata Still Exists
+
+radosgw-admin metadata get bucket:elderly-share
+
+Confirmed metadata record still present.
+
+Also verified via:
+
+radosgw-admin metadata list bucket
+
+
+⸻
+
+7️⃣ Final Resolution — Metadata Removal
+
+Removed dangling bucket metadata:
+
+radosgw-admin metadata rm bucket:elderly-share
+
+Result:
+
+✅ Bucket successfully disappeared
+✅ No further deletion required
+✅ Ghost multipart warning resolved
+
+⸻
+
+📦 Post-Fix Observation — Orphan Objects
+
+Because bucket metadata was manually removed:
+
+Some object data remained in the RGW data pool
+(default.rgw.buckets.data)
+
+These objects are now considered:
+
+Orphan Objects
+
+Characteristics:
+	•	Exist in RADOS data pool
+	•	Not referenced by any bucket index
+	•	Invisible to users
+	•	Consume storage space only
+
+⸻
+
+🧹 Orphan Investigation Steps
+
+Performed orphan scan:
+
+radosgw-admin orphans find \
+  --pool default.rgw.buckets.data \
+  --job-id orphan-default-elderly \
+  --yes-i-really-mean-it
+
+Then finalized job:
+
+radosgw-admin orphans finish \
+  --pool default.rgw.buckets.data \
+  --job-id orphan-default-elderly
+
+
+⸻
+
+⚠️ Important Note — Ceph Mimic Limitation
+
+Ceph version 13.2.6 (Mimic) does NOT support:
+
+radosgw-admin orphans rm
+
+Therefore:
+	•	Orphan objects cannot be removed automatically via RGW tooling
+	•	Manual RADOS object deletion or Ceph upgrade is required for full cleanup
+
+⸻
+
+🧠 Root Cause (Most Likely)
+
+Combination of:
+	•	stale multipart upload metadata
+	•	broken bucket index / instance
+	•	incomplete GC queue processing
+	•	known RGW limitations in Mimic
+
+⸻
+
+✅ Recommended Follow-Up Actions
+	•	Monitor pool usage:
+
+ceph df detail
+
+	•	Check GC backlog:
+
+radosgw-admin gc list
+
+	•	Plan Ceph upgrade to Nautilus or newer for improved orphan tooling
+	•	Schedule storage hygiene cleanup if pool usage becomes critical
+
+⸻
+
+If you want, I can next give you:
+
+✅ Very short TLDR version (5-line summary)
+✅ Preventive checklist (how to avoid ghost buckets in Mimic)
+✅ Command cheat sheet for future incidents
+✅ Proper RCA template with timeline + impact + resolution
+
+Just tell me 👍
+
+
+
+
 If you want, I can turn this into a more formal RCA format with sections for Impact, Root Cause, Resolution, and Preventive Actions.
