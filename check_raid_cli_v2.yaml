@@ -1,0 +1,39 @@
+---
+- name: Check RAID CLI tools
+  hosts: raid_servers
+  gather_facts: yes
+  become: yes
+
+  tasks:
+
+    - name: Show basic info
+      debug:
+        msg: "Host={{ inventory_hostname }} OS={{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+    - name: Check ssacli (HPE)
+      shell: which ssacli
+      register: ssacli_check
+      ignore_errors: yes
+
+    - name: Check storcli (LSI / Supermicro / Dell)
+      shell: which storcli
+      register: storcli_check
+      ignore_errors: yes
+
+    - name: Check perccli (Dell)
+      shell: which perccli
+      register: perccli_check
+      ignore_errors: yes
+
+    - name: Check megacli (old LSI)
+      shell: which MegaCli
+      register: megacli_check
+      ignore_errors: yes
+
+    - name: Show RAID CLI Summary
+      debug:
+        msg: |
+          ssacli={{ ssacli_check.stdout | default('not found') }}
+          storcli={{ storcli_check.stdout | default('not found') }}
+          perccli={{ perccli_check.stdout | default('not found') }}
+          megacli={{ megacli_check.stdout | default('not found') }}
