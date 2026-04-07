@@ -1,0 +1,231 @@
+7.1.10 - 8.12.2 (emissary-ingress)
+✅ 7.1.10
+   ↓
+✅ 7.6.1   (last stable 7.x)
+   ↓
+✅ 8.0.0   (major transition point)
+   ↓
+✅ 8.5.2   (stabilization release)
+   ↓
+✅ 8.12.2  (target)
+
+Step	Reason
+7.1 → 7.6	absorb minor fixes safely
+7.6 → 8.0	major breaking changes handled
+8.0 → 8.5	stabilize configs
+8.5 → 8.12	safe minor upgrades
+
+7.1.10
+   ↓
+7.6.1        (no CRD)
+   ↓
+🔴 APPLY CRDs (for v8)
+   ↓
+8.0.0        (safe)
+   ↓
+8.5.2        (no CRD)
+   ↓
+8.12.2       (no CRD)
+
+
+Emissary Ingress docker repo and tag
+ image:
+  # Emissary Ingress docker repo
+  repository: docker.io/datawire/emissary
+  # Emissary Ingress docker tag
+  tag: 3.12.2
+ 
+ Prometheus Exporter
+ 
+  prometheusExporter: # +doc-gen:break
+  enabled: false
+  repository: prom/statsd-exporter
+  tag: v0.8.1
+
+Ambassador agent
+image:
+    # Leave blank to use image.repository and image.tag
+    tag: 1.0.14
+    repository: docker.io/ambassador/ambassador-agent
+
+
+BEFORE jumping to 8.x → APPLY CRDs
+Apply new CRDs FIRST
+kubectl apply -f https://app.getambassador.io/yaml/emissary/3.0.0/emissary-crds.yaml
+
+THEN upgrade Helm to 8.0
+helm upgrade emissary-ingress datawire/emissary-ingress \
+  --version 8.0.0 \
+  -n ambassador \
+  -f values.yaml
+  
+ 
+ then continue upgrade to latest
+ 
+ 
+ extract image from helm
+ helm template emissary datawire/emissary-ingress \
+  --version 8.12.2 > rendered.yaml
+grep image: rendered.yaml | sort | uniq
+
+emissary-ingress images
+docker.io/emissaryingress/emissary:3.12.2
+docker.io/envoyproxy/envoy:v1.27.3
+gcr.io/kubebuilder/kube-rbac-proxy:v0.12.0
+
+
+
+mga images sa 
+docker.io/datawire/emissary:3.12.2  (required)
+busybox:latest (optional)
+prom/statsd-exporter:v0.8.1 (optional)
+docker.io/ambassador/ambassador-agent:1.0.14 (optional)
+
+
+7.6.1        (no CRD)
+docker.io/emissaryingress/emissary:2.5.1
+🔴 APPLY CRDs (for v8)
+7.x → 8.x
+or application-wise, Emissary 2.x → Emissary 3.x
+Official Emissary docs say that Emissary 3.X upgraded Envoy from 1.17.X to 1.22.
+  https://emissary-ingress.dev/docs/4.0/about/changes-3.y/?utm_source=chatgpt.com
+   ↓
+8.0.0        (safe)
+docker.io/emissaryingress/emissary:3.0.0
+
+8.5.2        (no CRD)
+docker.io/emissaryingress/emissary:3.5.2
+
+docker.io/ambassador/ambassador-agent:1.0.3
+
+8.12.2       (no CRD)
+docker.io/datawire/emissary:3.12.2
+docker.io/ambassador/ambassador-agent:1.0.14
+
+
+
+
+
+
+METAL LB
+0.15.3 (chart version)
+v0.15.3  (appversion)
+
+
+0.14.6 → CRDs for 0.15.3 → upgrade to 0.15.3
+
+
+kuberbacproxy container image
+repository: gcr.io/kubebuilder/kube-rbac-proxy
+    tag: v0.12.0
+
+controller
+image:
+    repository: quay.io/metallb/controller
+	
+speaker
+image:
+    repository: quay.io/metallb/speaker
+    tag:
+
+frr (optional)
+image:
+      repository: quay.io/frrouting/frr
+	  
+Pull Images from Quay
+docker pull quay.io/metallb/controller:v0.14.5
+docker pull quay.io/metallb/speaker:v0.14.5
+docker pull quay.io/frrouting/frr:9.1.0
+docker pull gcr.io/kubebuilder/kube-rbac-proxy:v0.12.0
+
+Tag for Local Registry
+docker tag quay.io/metallb/controller:v0.14.5 my-registry.local/metallb/controller:v0.14.5
+docker tag quay.io/metallb/speaker:v0.14.5 my-registry.local/metallb/speaker:v0.14.5
+docker tag quay.io/frrouting/frr:9.1.0 my-registry.local/metallb/frr:9.1.0
+docker tag gcr.io/kubebuilder/kube-rbac-proxy:v0.12.0 my-registry.local/metallb/kube-rbac-proxy:v0.12.0
+
+
+Push to Local Registry
+docker push my-registry.local/metallb/controller:v0.14.5
+docker push my-registry.local/metallb/speaker:v0.14.5
+docker push my-registry.local/metallb/frr:9.1.0
+docker push my-registry.local/metallb/kube-rbac-proxy:v0.12.0
+
+Update Helm Values (VERY IMPORTANT)
+
+Modify your values.yaml:
+kubeRBACProxy:
+  image:
+    repository: my-registry.local/metallb/kube-rbac-proxy
+    tag: v0.12.0
+	
+controller:
+  image:
+    repository: my-registry.local/metallb/controller
+    tag: v0.14.5
+
+speaker:
+  image:
+    repository: my-registry.local/metallb/speaker
+    tag: v0.14.5
+
+
+frr:
+  image:
+    repository: my-registry.local/metallb/frr
+    tag: 9.1.0
+	
+Metallb images
+quay.io/metallb/controller:v0.14.5
+quay.io/metallb/speaker:v0.14.5
+gcr.io/kubebuilder/kube-rbac-proxy:v0.12.0
+quay.io/frrouting/frr:9.x   # if BGP
+
+
+EXTERNAL-DNS
+
+registry.k8s.io/external-dns/external-dns:0.20.0
+docker pull registry.k8s.io/external-dns/external-dns:v0.20.0
+
+retag
+docker tag registry.k8s.io/external-dns/external-dns:v0.20.0 my-registry.local/library/external-dns:v0.20.0
+
+push
+docker push my-registry.local/library/external-dns:v0.20.0
+
+
+
+docker pull registry.k8s.io/external-dns/external-dns:v0.18.0
+docker tag registry.k8s.io/external-dns/external-dns:v0.18.0 \
+  <your-registry>/external-dns/external-dns:v0.18.0
+docker push <your-registry>/external-dns/external-dns:v0.18.0
+
+docker pull registry.k8s.io/external-dns/external-dns:v0.20.0
+docker tag registry.k8s.io/external-dns/external-dns:v0.20.0 \
+  <your-registry>/external-dns/external-dns:v0.20.0
+docker push <your-registry>/external-dns/external-dns:v0.20.0
+
+
+# Step 1
+helm upgrade --install external-dns external-dns/external-dns \
+  -n external-dns \
+  --version 1.18.0 \
+  -f values-current.yaml
+
+# verify pods/logs
+
+# Step 2
+helm upgrade --install external-dns external-dns/external-dns \
+  -n external-dns \
+  --version 1.20.0 \
+  -f values-current.yaml
+  
+  
+
+notes; need credentials for private
+kubectl create secret docker-registry regcred \
+  --docker-server=my-registry.local \
+  --docker-username=admin \
+  --docker-password=PASSWORD \
+  --docker-email=your@email.com \
+  -n external-dns
