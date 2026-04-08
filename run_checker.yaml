@@ -1,0 +1,49 @@
+---
+- name: Copy checker script, run it, and fetch the report back
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    local_base_dir: /home/ope/mbh-ansible
+    local_script: /home/ope/mbh-ansible/checker_v2.sh
+    remote_script: /tmp/checker_v2.sh
+
+  tasks:
+    - name: Copy script to target host
+      ansible.builtin.copy:
+        src: "{{ local_script }}"
+        dest: "{{ remote_script }}"
+        mode: '0755'
+
+    - name: Execute script as root
+      ansible.builtin.shell: "{{ remote_script }}"
+      register: checker_run
+
+    - name: Show script output
+      ansible.builtin.debug:
+        var: checker_run.stdout_lines
+
+    - name: Get report path from script output
+      ansible.builtin.set_fact:
+        report_path: >-
+          {{
+            (checker_run.stdout ~ '\n' ~ checker_run.stderr)
+            | regex_search('Report saved to:\\s*(\\S+)', '\\1')
+            | first
+          }}
+
+    - name: Fail if report path was not found
+      ansible.builtin.fail:
+        msg: "Could not find 'Report saved to:' in script output."
+      when: report_path | length == 0
+
+    - name: Show detected report path
+      ansible.builtin.debug:
+        msg: "Detected report file: {{ report_path }}"
+
+    - name: Copy report file back to control node
+      ansible.builtin.fetch:
+        src: "{{ report_path }}"
+        dest: "{{ local_base_dir }}/"
+        flat: false
