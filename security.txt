@@ -5,17 +5,21 @@
     mode: '0755'
 
 - name: Run script
-  shell: "bash /tmp/checker_v2.sh"
+  shell: bash /tmp/checker_v2.sh
   become: true
   register: run_output
 
-- name: Extract raw report value
+- name: Build combined output
   set_fact:
-    report_raw: "{{ ((run_output.stdout | default('') | string) ~ ' ' ~ (run_output.stderr | default('') | string)) | regex_search('Report saved to:[[:space:]]*([^[:space:]]+)', '\\1') | first | default('') }}"
+    combined_output: "{{ run_output.stdout | default('') }} {{ run_output.stderr | default('') }}"
 
-- name: Build full report path
+- name: Extract report filename/path
   set_fact:
-    report_path: "{{ report_raw if report_raw.startswith('/') else '/tmp/' ~ report_raw }}"
+    report_raw: "{{ combined_output | regex_replace('.*Report saved to:[[:space:]]*([^[:space:]]+).*', '\\1') }}"
+
+- name: Build full path
+  set_fact:
+    report_path: "{{ report_raw if report_raw[0:1] == '/' else '/tmp/' + report_raw }}"
 
 - name: Fetch report
   fetch:
