@@ -1,0 +1,61 @@
+---
+- name: Copy script, run, and fetch report
+  hosts: all
+  gather_facts: false
+  become: true
+
+  vars:
+    local_script: /home/ope/mbh-ansible/checker_v2.sh
+    remote_script: /tmp/checker_v2.sh
+    remote_log: /tmp/checker_v2.log
+
+  tasks:
+    - name: Copy script
+      ansible.builtin.copy:
+        src: "{{ local_script }}"
+        dest: "{{ remote_script }}"
+        mode: '0755'
+
+    - name: Run script as root
+      ansible.builtin.shell: "bash {{ remote_script }} > {{ remote_log }} 2>&1"
+      register: run_result
+
+    - name: Read script log
+      ansible.builtin.shell: "cat {{ remote_log }}"
+      register: checker_log
+
+    - name: Show script log
+      ansible.builtin.debug:
+        var: checker_log.stdout_lines
+
+    - name: Extract raw report value
+      ansible.builtin.set_fact:
+        report_raw: "{{ checker_log.stdout | regex_search('Report saved to:[[:space:]]*([^[:space:]]+)', '\\1') | first | default('') }}"
+
+    - name: Build full report path if needed
+      ansible.builtin.set_fact:
+        report_path: >-
+          {{
+            report_raw if report_raw.startswith('/')
+            else '/tmp/' ~ report_raw
+          }}
+
+    - name: Show report path
+      ansible.builtin.debug:
+        var: report_path
+
+    - name: Check if report exists
+      ansible.builtin.stat:
+        path: "{{ report_path }}"
+      register: report_stat
+
+    - name: Fail if report file not found
+      ansible.builtin.fail:
+        msg: "Report file not found: {{ report_path }}"
+      when: not report_stat.stat.exists
+
+    - name: Fetch report
+      ansible.builtin.fetch:
+        src: "{{ report_path }}"
+        dest: "/home/ope/mbh-ansible/"
+        flat: true
