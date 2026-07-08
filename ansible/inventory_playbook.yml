@@ -1,0 +1,66 @@
+---
+# inventory_playbook.yml
+# Inventories CPU, memory, storage, vCPU, GPU (if present) and OS facts
+# for all hosts in the target group, then exports a single CSV.
+#
+# Usage:
+#   ansible-playbook -i hosts.ini inventory_playbook.yml
+#
+# Adjust `hosts:` below to match your actual group name
+# (e.g. k8s_masters:k8s_workers:gpu_nodes, or "all").
+
+- name: Inventory Kubernetes host hardware
+  hosts: k8s_cluster
+  gather_facts: yes
+  become: yes
+  vars:
+    output_csv: "/tmp/k8s_host_inventory.csv"     # rendered on the control node
+
+  tasks:
+
+    - name: Calculate total physical disk size (bytes) excluding loop/dm/ram/sr devices
+      set_fact:
+        total_storage_bytes: >-
+          {{ ansible_devices
+             | dict2items
+             | rejectattr('key', 'match', '^(loop|sr|dm-|ram|fd)')
+             | map(attribute='value.sectors')
+             | map('int')
+             | sum
+             | int * 512 }}
+
+    - name: Convert storage to GB
+      set_fact:
+        total_storage_gb: "{{ (total_storage_bytes | int / (1024**3)) | round(2) }}"
+        disk_count: >-
+          {{ ansible_devices
+             | dict2items
+             | rejectattr('key', 'match', '^(loop|sr|dm-|ram|fd)')
+             | list | length }}
+
+    - name: Convert memory to GB
+      set_fact:
+        total_memory_gb: "{{ (ansible_memtotal_mb | int / 1024) | round(2) }}"
+
+    - name: Detect NVIDIA GPU presence (ignore hosts without one)
+      command: nvidia-smi --query-gpu=name --format=csv,noheader
+      register: gpu_check
+      changed_when: false
+      failed_when: false
+
+    - name: Set GPU facts
+      set_fact:
+        gpu_count: "{{ gpu_check.stdout_lines | default([]) | length }}"
+        gpu_model: "{{ gpu_check.stdout_lines[0] | default('N/A') }}"
+
+    - name: Render consolidated CSV on control node
+      template:
+        src: templates/inventory.csv.j2
+        dest: "{{ output_csv }}"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Show output path
+      debug:
+        msg: "Inventory CSV written to {{ output_csv }} on the control node"
+      run_once: true
